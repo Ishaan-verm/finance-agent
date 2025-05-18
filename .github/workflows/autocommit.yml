@@ -18,73 +18,109 @@ jobs:
         with:
           python-version: '3.x'
           
-      - name: Generate random commits
+      - name: Create and execute Python script
         run: |
-          python -c "
-import random
-import datetime
+          cat > commit_script.py << 'EOF'
 import os
 import time
-          
-today = datetime.datetime.now().strftime('%Y-%m-%d')
+from datetime import datetime
+import secrets  # Using secrets instead of random for better randomness
+
+# Helper function to get a random integer
+def random_int(min_val, max_val):
+    range_size = max_val - min_val + 1
+    return min_val + (secrets.randbelow(range_size))
+
+today = datetime.now().strftime('%Y-%m-%d')
 quota_file = 'commit_quota.txt'
+
 if not os.path.exists(quota_file):
     with open(quota_file, 'w') as f:
         f.write(f'{today}:0')
+
+# Read current quota
 with open(quota_file, 'r') as f:
     content = f.read().strip()
     last_date, commits_made = content.split(':')
     commits_made = int(commits_made)
+
+# Reset quota if it's a new day
 if last_date != today:
     commits_made = 0
     last_date = today
+
+# Determine daily target (3-10 commits)
 if commits_made == 0:  # First run of the day
-    daily_target = random.randint(3, 10)
+    daily_target = random_int(3, 10)
     print(f'Setting daily target to {daily_target} commits')
 else:
+    # Parse the daily target from the first line of the file
     with open(quota_file, 'r') as f:
         first_line = f.readline().strip()
         if ':' in first_line and 'target:' in first_line:
             daily_target = int(first_line.split('target:')[1])
         else:
-            daily_target = random.randint(3, 10)
+            daily_target = random_int(3, 10)
             print(f'Target not found, setting to {daily_target} commits')
+
+# Determine remaining commits needed
 remaining = max(0, daily_target - commits_made)
 print(f'Already made {commits_made} commits today, need {remaining} more to reach target of {daily_target}')
-current_hour = datetime.datetime.now().hour
+
+# Determine how many hours are left in the day
+current_hour = datetime.now().hour
 hours_left = max(1, 24 - current_hour) / 2  # Divide by 2 because we run every 2 hours
 commits_per_run = max(1, round(remaining / hours_left)) if remaining > 0 else 0
-commits_this_run = min(3, random.randint(max(1, commits_per_run - 1), commits_per_run + 1)) if remaining > 0 else 0
+
+# Cap at 3 commits per run to spread throughout the day
+min_commits = max(1, commits_per_run - 1) if remaining > 0 else 0
+commits_this_run = min(3, random_int(min_commits, commits_per_run + 1)) if remaining > 0 else 0
 commits_this_run = min(remaining, commits_this_run)  # Don't exceed remaining commits
+
 print(f'Will make {commits_this_run} commits in this run')
+
+# Define commit message components
+commit_types = ['chore', 'update', 'fix', 'docs', 'refactor', 'style']
+actions = ['update activity', 'refresh data', 'maintain status', 'sync timestamp', 'log activity']
+
+# Make the commits
 for i in range(commits_this_run):
     # Create a unique activity entry
-    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    random_data = random.randint(1000, 9999)
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    random_data = random_int(1000, 9999)
     
     # Update activity file with timestamp and random data
     with open('activity.txt', 'w') as f:
         f.write(f'Last updated: {timestamp} [ID:{random_data}]')
     
     # Create random commit message
-    commit_types = ['chore', 'update', 'fix', 'docs', 'refactor', 'style']
-    actions = ['update activity', 'refresh data', 'maintain status', 'sync timestamp', 'log activity']
+    commit_type = commit_types[random_int(0, len(commit_types)-1)]
+    action = actions[random_int(0, len(actions)-1)]
     
-    commit_type = random.choice(commit_types)
-    action = random.choice(actions)
-    
-    commit_command = f'git add activity.txt && git commit -m \\\"{commit_type}: {action} {random_data}\\\"'
+    commit_command = f'git add activity.txt && git commit -m "{commit_type}: {action} {random_data}"'
     os.system(commit_command)
     
     if i < commits_this_run - 1:  # Don't delay after the last commit
-        delay = random.randint(30, 120)
+        delay = random_int(30, 120)
         print(f'Waiting {delay} seconds before next commit...')
         time.sleep(delay)
+
+# Update the quota file with new count and daily target
 new_count = commits_made + commits_this_run
 with open(quota_file, 'w') as f:
-    f.write(f'target:{daily_target}\\n{today}:{new_count}')
+    f.write(f'target:{daily_target}\n{today}:{new_count}')
     
 print(f'Updated commit count: {new_count}/{daily_target} for today')
+EOF
+          
+          # Execute the script
+          python commit_script.py
+      
+      - name: Push changes
+        run: |
+          git config user.name "Ishaan Verma"
+          git config user.email "vermaishaan12345@gmail.com"
+          git push https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }} HEAD:main
           "
       
       - name: Push changes
