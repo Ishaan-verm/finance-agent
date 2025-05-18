@@ -13,115 +13,128 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
-          
-      - name: Create and execute Python script
+      - name: Generate random commits
+        shell: bash
         run: |
-          cat > commit_script.py << 'EOF'
-import os
-import time
-from datetime import datetime
-import secrets  # Using secrets instead of random for better randomness
-
-# Helper function to get a random integer
-def random_int(min_val, max_val):
-    range_size = max_val - min_val + 1
-    return min_val + (secrets.randbelow(range_size))
-
-today = datetime.now().strftime('%Y-%m-%d')
-quota_file = 'commit_quota.txt'
-
-if not os.path.exists(quota_file):
-    with open(quota_file, 'w') as f:
-        f.write(f'{today}:0')
-
-# Read current quota
-with open(quota_file, 'r') as f:
-    content = f.read().strip()
-    last_date, commits_made = content.split(':')
-    commits_made = int(commits_made)
-
-# Reset quota if it's a new day
-if last_date != today:
-    commits_made = 0
-    last_date = today
-
-# Determine daily target (3-10 commits)
-if commits_made == 0:  # First run of the day
-    daily_target = random_int(3, 10)
-    print(f'Setting daily target to {daily_target} commits')
-else:
-    # Parse the daily target from the first line of the file
-    with open(quota_file, 'r') as f:
-        first_line = f.readline().strip()
-        if ':' in first_line and 'target:' in first_line:
-            daily_target = int(first_line.split('target:')[1])
-        else:
-            daily_target = random_int(3, 10)
-            print(f'Target not found, setting to {daily_target} commits')
-
-# Determine remaining commits needed
-remaining = max(0, daily_target - commits_made)
-print(f'Already made {commits_made} commits today, need {remaining} more to reach target of {daily_target}')
-
-# Determine how many hours are left in the day
-current_hour = datetime.now().hour
-hours_left = max(1, 24 - current_hour) / 2  # Divide by 2 because we run every 2 hours
-commits_per_run = max(1, round(remaining / hours_left)) if remaining > 0 else 0
-
-# Cap at 3 commits per run to spread throughout the day
-min_commits = max(1, commits_per_run - 1) if remaining > 0 else 0
-commits_this_run = min(3, random_int(min_commits, commits_per_run + 1)) if remaining > 0 else 0
-commits_this_run = min(remaining, commits_this_run)  # Don't exceed remaining commits
-
-print(f'Will make {commits_this_run} commits in this run')
-
-# Define commit message components
-commit_types = ['chore', 'update', 'fix', 'docs', 'refactor', 'style']
-actions = ['update activity', 'refresh data', 'maintain status', 'sync timestamp', 'log activity']
-
-# Make the commits
-for i in range(commits_this_run):
-    # Create a unique activity entry
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    random_data = random_int(1000, 9999)
-    
-    # Update activity file with timestamp and random data
-    with open('activity.txt', 'w') as f:
-        f.write(f'Last updated: {timestamp} [ID:{random_data}]')
-    
-    # Create random commit message
-    commit_type = commit_types[random_int(0, len(commit_types)-1)]
-    action = actions[random_int(0, len(actions)-1)]
-    
-    commit_command = f'git add activity.txt && git commit -m "{commit_type}: {action} {random_data}"'
-    os.system(commit_command)
-    
-    if i < commits_this_run - 1:  # Don't delay after the last commit
-        delay = random_int(30, 120)
-        print(f'Waiting {delay} seconds before next commit...')
-        time.sleep(delay)
-
-# Update the quota file with new count and daily target
-new_count = commits_made + commits_this_run
-with open(quota_file, 'w') as f:
-    f.write(f'target:{daily_target}\n{today}:{new_count}')
-    
-print(f'Updated commit count: {new_count}/{daily_target} for today')
-EOF
+          # Get today's date in YYYY-MM-DD format
+          TODAY=$(date '+%Y-%m-%d')
+          QUOTA_FILE="commit_quota.txt"
           
-          # Execute the script
-          python commit_script.py
-      
-      - name: Push changes
-        run: |
-          git config user.name "Ishaan Verma"
-          git config user.email "vermaishaan12345@gmail.com"
-          git push https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }} HEAD:main
-          "
+          # Create quota file if it doesn't exist
+          if [ ! -f "$QUOTA_FILE" ]; then
+            echo "$TODAY:0" > "$QUOTA_FILE"
+          fi
+          
+          # Read current quota
+          LAST_DATE=$(head -n 1 "$QUOTA_FILE" | cut -d':' -f1)
+          if [[ "$LAST_DATE" == *"target"* ]]; then
+            # If first line contains target info
+            DAILY_TARGET=$(head -n 1 "$QUOTA_FILE" | cut -d':' -f2)
+            LAST_DATE=$(tail -n 1 "$QUOTA_FILE" | cut -d':' -f1)
+            COMMITS_MADE=$(tail -n 1 "$QUOTA_FILE" | cut -d':' -f2)
+          else
+            # No target info yet
+            LAST_DATE=$(cat "$QUOTA_FILE" | cut -d':' -f1)
+            COMMITS_MADE=$(cat "$QUOTA_FILE" | cut -d':' -f2)
+          fi
+          
+          # Reset counter if it's a new day
+          if [ "$LAST_DATE" != "$TODAY" ]; then
+            COMMITS_MADE=0
+            LAST_DATE="$TODAY"
+          fi
+          
+          # Determine daily target (3-10 commits)
+          if [ "$COMMITS_MADE" -eq 0 ]; then
+            # First run of the day - set a new target
+            # Use nanoseconds from date to generate pseudo-random number
+            RANDOM_SEED=$(date +%N)
+            DAILY_TARGET=$(( 3 + RANDOM_SEED % 8 ))  # Range: 3-10
+            echo "Setting daily target to $DAILY_TARGET commits"
+          fi
+          
+          # Calculate remaining commits
+          REMAINING=$(( DAILY_TARGET - COMMITS_MADE ))
+          if [ "$REMAINING" -lt 0 ]; then
+            REMAINING=0
+          fi
+          echo "Already made $COMMITS_MADE commits today, need $REMAINING more to reach target of $DAILY_TARGET"
+          
+          # Calculate how many commits to do in this run
+          CURRENT_HOUR=$(date +%H)
+          HOURS_LEFT=$(( (24 - CURRENT_HOUR) / 2 ))
+          if [ "$HOURS_LEFT" -lt 1 ]; then
+            HOURS_LEFT=1
+          fi
+          
+          # Calculate average commits needed per run
+          if [ "$REMAINING" -gt 0 ]; then
+            COMMITS_PER_RUN=$(( (REMAINING + HOURS_LEFT - 1) / HOURS_LEFT ))  # Ceiling division
+            if [ "$COMMITS_PER_RUN" -lt 1 ]; then
+              COMMITS_PER_RUN=1
+            fi
+          else
+            COMMITS_PER_RUN=0
+          fi
+          
+          # Add some randomness (±1) to commits per run, but cap at 3
+          RANDOM_SEED=$(date +%N)
+          RANDOM_OFFSET=$(( (RANDOM_SEED % 3) - 1 ))  # Range: -1 to 1
+          COMMITS_THIS_RUN=$(( COMMITS_PER_RUN + RANDOM_OFFSET ))
+          
+          # Ensure at least 1 commit if we have remaining commits
+          if [ "$REMAINING" -gt 0 ] && [ "$COMMITS_THIS_RUN" -lt 1 ]; then
+            COMMITS_THIS_RUN=1
+          fi
+          
+          # Cap commits at 3 per run and don't exceed remaining
+          if [ "$COMMITS_THIS_RUN" -gt 3 ]; then
+            COMMITS_THIS_RUN=3
+          fi
+          if [ "$COMMITS_THIS_RUN" -gt "$REMAINING" ]; then
+            COMMITS_THIS_RUN="$REMAINING"
+          fi
+          
+          echo "Will make $COMMITS_THIS_RUN commits in this run"
+          
+          # Define arrays for commit messages
+          COMMIT_TYPES=("chore" "update" "fix" "docs" "refactor" "style")
+          ACTIONS=("update activity" "refresh data" "maintain status" "sync timestamp" "log activity")
+          
+          # Make the commits
+          for (( i=1; i<=COMMITS_THIS_RUN; i++ ))
+          do
+            # Create timestamp with random data
+            TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+            RANDOM_DATA=$(( 1000 + ($(date +%N) % 9000) ))  # Range: 1000-9999
+            
+            # Update activity file
+            echo "Last updated: $TIMESTAMP [ID:$RANDOM_DATA]" > activity.txt
+            
+            # Create random commit message
+            TYPE_INDEX=$(( $(date +%N) % ${#COMMIT_TYPES[@]} ))
+            ACTION_INDEX=$(( $(date +%N) % ${#ACTIONS[@]} ))
+            COMMIT_TYPE=${COMMIT_TYPES[$TYPE_INDEX]}
+            ACTION=${ACTIONS[$ACTION_INDEX]}
+            
+            # Add and commit
+            git add activity.txt
+            git commit -m "$COMMIT_TYPE: $ACTION $RANDOM_DATA"
+            
+            # Add delay between commits (if not the last one)
+            if [ "$i" -lt "$COMMITS_THIS_RUN" ]; then
+              DELAY=$(( 30 + ($(date +%N) % 91) ))  # Range: 30-120 seconds
+              echo "Waiting $DELAY seconds before next commit..."
+              sleep "$DELAY"
+            fi
+          done
+          
+          # Update quota file
+          NEW_COUNT=$(( COMMITS_MADE + COMMITS_THIS_RUN ))
+          echo "target:$DAILY_TARGET" > "$QUOTA_FILE"
+          echo "$TODAY:$NEW_COUNT" >> "$QUOTA_FILE"
+          
+          echo "Updated commit count: $NEW_COUNT/$DAILY_TARGET for today"
       
       - name: Push changes
         run: |
