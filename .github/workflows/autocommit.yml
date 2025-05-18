@@ -13,6 +13,11 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       
+      - name: Configure Git
+        run: |
+          git config user.name "Ishaan Verma"
+          git config user.email "vermaishaan12345@gmail.com"
+      
       - name: Generate random commits
         shell: bash
         run: |
@@ -47,9 +52,8 @@ jobs:
           # Determine daily target (3-10 commits)
           if [ "$COMMITS_MADE" -eq 0 ]; then
             # First run of the day - set a new target
-            # Use nanoseconds from date to generate pseudo-random number
-            RANDOM_SEED=$(date +%N)
-            DAILY_TARGET=$(( 3 + RANDOM_SEED % 8 ))  # Range: 3-10
+            # Use $RANDOM bash built-in instead of date +%N which might not work on all systems
+            DAILY_TARGET=$(( 3 + RANDOM % 8 ))  # Range: 3-10
             echo "Setting daily target to $DAILY_TARGET commits"
           fi
           
@@ -78,8 +82,7 @@ jobs:
           fi
           
           # Add some randomness (±1) to commits per run, but cap at 3
-          RANDOM_SEED=$(date +%N)
-          RANDOM_OFFSET=$(( (RANDOM_SEED % 3) - 1 ))  # Range: -1 to 1
+          RANDOM_OFFSET=$(( (RANDOM % 3) - 1 ))  # Range: -1 to 1
           COMMITS_THIS_RUN=$(( COMMITS_PER_RUN + RANDOM_OFFSET ))
           
           # Ensure at least 1 commit if we have remaining commits
@@ -106,14 +109,14 @@ jobs:
           do
             # Create timestamp with random data
             TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-            RANDOM_DATA=$(( 1000 + ($(date +%N) % 9000) ))  # Range: 1000-9999
+            RANDOM_DATA=$(( 1000 + (RANDOM % 9000) ))  # Range: 1000-9999
             
             # Update activity file
             echo "Last updated: $TIMESTAMP [ID:$RANDOM_DATA]" > activity.txt
             
             # Create random commit message
-            TYPE_INDEX=$(( $(date +%N) % ${#COMMIT_TYPES[@]} ))
-            ACTION_INDEX=$(( $(date +%N) % ${#ACTIONS[@]} ))
+            TYPE_INDEX=$(( RANDOM % ${#COMMIT_TYPES[@]} ))
+            ACTION_INDEX=$(( RANDOM % ${#ACTIONS[@]} ))
             COMMIT_TYPE=${COMMIT_TYPES[$TYPE_INDEX]}
             ACTION=${ACTIONS[$ACTION_INDEX]}
             
@@ -123,7 +126,7 @@ jobs:
             
             # Add delay between commits (if not the last one)
             if [ "$i" -lt "$COMMITS_THIS_RUN" ]; then
-              DELAY=$(( 30 + ($(date +%N) % 91) ))  # Range: 30-120 seconds
+              DELAY=$(( 30 + (RANDOM % 91) ))  # Range: 30-120 seconds
               echo "Waiting $DELAY seconds before next commit..."
               sleep "$DELAY"
             fi
@@ -138,6 +141,4 @@ jobs:
       
       - name: Push changes
         run: |
-          git config user.name "Ishaan Verma"
-          git config user.email "vermaishaan12345@gmail.com"
           git push https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }} HEAD:main
