@@ -3,7 +3,6 @@ on:
   schedule:
     - cron: '0 */2 * * *'  # Runs every 2 hours
   workflow_dispatch:        # Allows manual triggering
-
 jobs:
   stochastic-commit:
     runs-on: ubuntu-latest
@@ -26,24 +25,19 @@ import random
 import datetime
 import os
 import time
-
           
 today = datetime.datetime.now().strftime('%Y-%m-%d')
 quota_file = 'commit_quota.txt'
-
 if not os.path.exists(quota_file):
     with open(quota_file, 'w') as f:
         f.write(f'{today}:0')
-
 with open(quota_file, 'r') as f:
     content = f.read().strip()
     last_date, commits_made = content.split(':')
     commits_made = int(commits_made)
-
 if last_date != today:
     commits_made = 0
     last_date = today
-
 if commits_made == 0:  # First run of the day
     daily_target = random.randint(3, 10)
     print(f'Setting daily target to {daily_target} commits')
@@ -55,19 +49,14 @@ else:
         else:
             daily_target = random.randint(3, 10)
             print(f'Target not found, setting to {daily_target} commits')
-
 remaining = max(0, daily_target - commits_made)
 print(f'Already made {commits_made} commits today, need {remaining} more to reach target of {daily_target}')
-
 current_hour = datetime.datetime.now().hour
 hours_left = max(1, 24 - current_hour) / 2  # Divide by 2 because we run every 2 hours
 commits_per_run = max(1, round(remaining / hours_left)) if remaining > 0 else 0
-
 commits_this_run = min(3, random.randint(max(1, commits_per_run - 1), commits_per_run + 1)) if remaining > 0 else 0
 commits_this_run = min(remaining, commits_this_run)  # Don't exceed remaining commits
-
 print(f'Will make {commits_this_run} commits in this run')
-
 for i in range(commits_this_run):
     # Create a unique activity entry
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -84,14 +73,13 @@ for i in range(commits_this_run):
     commit_type = random.choice(commit_types)
     action = random.choice(actions)
     
-    commit_command = f'git add activity.txt && git commit -m \"{commit_type}: {action} {random_data}\"'
+    commit_command = f'git add activity.txt && git commit -m \\\"{commit_type}: {action} {random_data}\\\"'
     os.system(commit_command)
     
     if i < commits_this_run - 1:  # Don't delay after the last commit
         delay = random.randint(30, 120)
         print(f'Waiting {delay} seconds before next commit...')
         time.sleep(delay)
-
 new_count = commits_made + commits_this_run
 with open(quota_file, 'w') as f:
     f.write(f'target:{daily_target}\\n{today}:{new_count}')
